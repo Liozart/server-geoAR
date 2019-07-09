@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <title>Objectselector Map</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <!-- MapBox scripts -->
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.54.0/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.54.0/mapbox-gl.css' rel='stylesheet' />
+    <link rel="shortcut icon" type="image/png" href="/favicon.ico"/>
+    <style>
+        body { margin:0; padding:0; }
+        #map { position:absolute; top:0; bottom:0; right: 0; width:80%; height: 95%; margin: 5px; }
+        .zone { width: 18%; margin: 1%; border: 1px grey solid; border-radius: 5px; padding: 5px; }
+        .zoneIn { border: 1px grey solid; border-radius: 3px; padding: 3px; }
+        #btn { margin-top: 10px; left: 2%; }
+    </style>
+</head>
+<body>
+<!-- Geocoder scripts -->
+<script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.2.0/mapbox-gl-geocoder.min.js'></script>
+<link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.2.0/mapbox-gl-geocoder.css' type='text/css' />
+<div  class="zone">
+    Sélectionnez l'emplacement de l'objet sur la carte : Cliquez pour placer le marqueur là où vous souhaitez que l'objet apparaîsse.<br/>
+    Vous pouvez choisir son orientation et sa hauteur avec les contrôles ci-dessous.<br/>
+    <div class="zoneIn">
+        <table>
+            <tr>
+                <td>
+                    <label for="rangeHeight">Hauteur</label><br/>
+                    <input id="rangeHeight" type="range" value="1" min="0" max="10" step="0.1" onchange="UpdateValueHeight()"/>
+                </td>
+                <td id="heightValue">
+                    0 m
+                </td>
+            </tr>
+        </table>
+    </div>
+    <br/>
+    <div class="zoneIn">
+        <table>
+            <tr>
+                <td>
+                    <label for="rangeRotation">Orientation</label><br/>
+                    <input id="rangeRotation" type="range" value="1" min="0" max="359" step="1" onchange="UpdateValueRotation()"/>
+                </td>
+                <td id="rotationValue">
+                    0 °
+                </td>
+            </tr>
+        </table>
+    </div>
+    <button type="button" id="btn" class="btn btn-success" onclick="validPos();">Valider emplacement</button>
+</div>
+<div id='map'></div>
+<script>
+    var databasePath = "database/addObjectInfo";
+
+    var pos = null;
+    var first = true;
+
+    //Create map
+    mapboxgl.accessToken = 'pk.eyJ1IjoibGlvemFydCIsImEiOiJjajl5NXJvbWI0dWhtMnBtdmJxeWlkNzBzIn0.gJ4P4FFmThRRNk-SsG6oIQ';
+    var map = new mapboxgl.Map({
+        container: 'map', // container id
+        style: 'mapbox://styles/mapbox/streets-v11', // stylesheet location
+        center: [6.1456900, 46.2022200], // starting position [lng, lat]
+        zoom: 12 // starting zoom
+    });
+    //Disable tilt and rotation
+    map["dragRotate"].disable();
+
+    //Add the arrow icon to use it later
+    map.loadImage('/arrow.png', function (error, image) {
+        if (error) throw error;
+        map.addImage('arrow', image);
+    });
+
+    //Search bar
+    map.addControl(new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken,
+        zoom: 14,
+        placeholder: "Rechercher adresse",
+        mapboxgl: mapboxgl
+    }));
+
+    //Add the icon on click event as layer (easy to rotate)
+    map.on('click', function (e) {
+        pos = e.lngLat;
+        data = {
+            "id": "arrow",
+            "type": "symbol",
+            "source": {
+                "type": "geojson",
+                "data": {
+                    "type": "FeatureCollection",
+                    "features": [{
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [pos.lng, pos.lat]
+                        }
+                    }]
+                }
+            },
+            "layout": {
+                "icon-image": "arrow",
+                "icon-size": 0.20,
+                "icon-rotate": parseInt($("#rangeRotation").val())
+            }
+        };
+
+        //Place or update the layer
+        if (first){
+            first = false;
+            map.addLayer(data);
+        }
+        else{
+            map.removeLayer("arrow");
+            map.removeSource("arrow");
+            map.addLayer(data);
+
+        }
+    });
+
+    //User validated object infos
+    function validPos(){
+        var long = pos.lng, lat = pos.lat;
+        var height = $("#rangeHeight").val();
+        var orientation = $("#rangeRotation").val();
+        var currentObjName = decodeURIComponent((new RegExp('[?|&]' + "param" + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search)
+            || [null, ''])[1].replace(/\+/g, '%20'))
+            || null;
+
+        var fdata = new FormData();
+        fdata.append("name", currentObjName);
+        fdata.append("lng", long);
+        fdata.append("lat", lat);
+        fdata.append("height", height);
+        fdata.append("orientation", orientation);
+
+        fetch(databasePath, {
+            method: 'post',
+            body: fdata
+        }).then(response => {
+            if (response.ok) {
+                bootbox.alert("Les informations ont été sauvegardées. Votre objet est en ligne !", function(){
+                    window.location = "/";
+                });
+            }
+        });
+    }
+
+    //Update height lablel
+    function UpdateValueHeight(){
+        $("#heightValue").html($("#rangeHeight").val() + "m");
+    }
+
+    //Update rotation label and layer icon
+    function UpdateValueRotation(){
+        var rotation = $("#rangeRotation").val();
+        $("#rotationValue").html(rotation + "°");
+
+        if (!first){
+            data = {
+                "id": "arrow",
+                "type": "symbol",
+                "source": {
+                    "type": "geojson",
+                    "data": {
+                        "type": "FeatureCollection",
+                        "features": [{
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [pos.lng, pos.lat]
+                            }
+                        }]
+                    }
+                },
+                "layout": {
+                    "icon-image": "arrow",
+                    "icon-size": 0.20,
+                    "icon-rotate": parseInt($("#rangeRotation").val())
+                }
+            };
+            map.removeLayer("arrow");
+            map.removeSource("arrow");
+            map.addLayer(data);
+        }
+    }
+</script>
+<!-- Optional JavaScript -->
+<!-- jQuery first, then Popper.js, then Bootstrap JS -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+<script src="javascripts/libraries/bootbox.js"></script>
+<script src="javascripts/libraries/bootbox.locales.js"></script>
+<script src="javascripts/libraries/bootbox.all.js"></script>
+</body>
+</html>
