@@ -6,7 +6,7 @@
     "start": "node ./bin/www"
   },
   "dependencies": {
-    "express": "~4.16.1",
+    "express": "~4.17.3",
     "express-formidable": "^1.2.0",
     "mongodb": "^3.2.7",
     "rimraf": "^2.6.3"
